@@ -363,3 +363,52 @@ quick-deploy: test build deploy ## Quick deployment
 # CI/CD helpers
 ci: lint type-check test-unit test-integration ## Run CI checks
 cd: build deploy-check deploy-execute deploy-verify ## Run CD pipeline
+
+# Swift Development
+swift-build: ## Build Swift project
+	@echo "${BLUE}Building Swift project...${NC}"
+	@cd ../FilePilot && xcodebuild build -scheme FilePilot -configuration Debug
+
+swift-test: ## Run Swift tests
+	@echo "${BLUE}Running Swift tests...${NC}"
+	@cd ../FilePilot && xcodebuild test -scheme FilePilot -destination 'platform=macOS'
+
+swift-clean: ## Clean Swift build
+	@echo "${BLUE}Cleaning Swift build...${NC}"
+	@cd ../FilePilot && xcodebuild clean
+
+swift-lint: ## Run SwiftLint
+	@echo "${BLUE}Running SwiftLint...${NC}"
+	@cd ../FilePilot && swiftlint || true
+
+swift-format: ## Format Swift code
+	@echo "${BLUE}Formatting Swift code...${NC}"
+	@cd ../FilePilot && swift-format -i -r FilePilot/
+
+swift-docs: ## Generate Swift documentation
+	@echo "${BLUE}Generating Swift documentation...${NC}"
+	@cd ../FilePilot && swift doc generate ./FilePilot --output ./docs
+
+swift-monitor: ## Start Swift monitoring
+	@echo "${BLUE}Starting Swift monitoring...${NC}"
+	@curl http://localhost:$(PORT)/api/swift/health
+
+swift-metrics: ## Show Swift metrics
+	@echo "${BLUE}Swift metrics:${NC}"
+	@curl -s http://localhost:$(PORT)/api/swift/metrics | jq .
+
+swift-status: ## Show Swift build status
+	@echo "${BLUE}Swift build status:${NC}"
+	@curl -s http://localhost:$(PORT)/api/swift/build/status | jq .
+
+# Integrated Swift + TypeScript development
+dev-swift: dev swift-monitor ## Start full development environment with Swift monitoring
+	@echo "${GREEN}Development environment ready with Swift monitoring${NC}"
+
+watch-swift: ## Watch Swift files and auto-build
+	@echo "${BLUE}Watching Swift files...${NC}"
+	@fswatch -o ../FilePilot/**/*.swift | xargs -n1 -I{} make swift-build
+
+profile-swift: ## Profile Swift app performance
+	@echo "${BLUE}Profiling Swift app...${NC}"
+	@cd ../FilePilot && instruments -t "Time Profiler" FilePilot.app

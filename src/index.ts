@@ -20,6 +20,7 @@ import './observability/instrumentation';
 // Import routes
 import { healthRouter } from './features/health/routes';
 import { usersRouter } from './features/users/routes';
+import { swiftRouter } from './features/swift-monitor/routes';
 
 /**
  * Initialize Express application
@@ -91,6 +92,8 @@ function createApp() {
   // API routes
   app.use('/health', healthRouter);
   app.use('/api/users', usersRouter);
+  app.use('/api/swift', swiftRouter);
+  app.use('/api/telemetry', swiftRouter);  // Alias for Swift app telemetry
 
   // Root endpoint
   app.get('/', (req: Request, res: Response) => {
@@ -103,7 +106,13 @@ function createApp() {
       endpoints: {
         health: '/health',
         metrics: '/metrics',
-        users: '/api/users'
+        users: '/api/users',
+        swift: {
+          build: '/api/swift/build',
+          tests: '/api/swift/tests',
+          metrics: '/api/swift/metrics',
+          telemetry: '/api/telemetry'
+        }
       }
     });
   });
