@@ -1,0 +1,148 @@
+# Automated Code Review Workflow
+# Triggered on pull request creation or update
+
+name: Automated Code Review
+version: 1.0.0
+description: AI-powered code review with comprehensive analysis
+
+triggers:
+  - event: pull_request
+    actions: [opened, synchronize, reopened]
+  - event: issue_comment
+    pattern: '/review'
+
+agent:
+  type: claude
+  model: claude-3-opus-20240229
+  temperature: 0.3
+
+steps:
+  # Step 1: Analyze changes
+  - name: analyze_changes
+    description: Analyze code changes and gather context
+    timeout: 5m
+    actions:
+      - fetch_pr_diff
+      - analyze_file_changes
+      - identify_affected_modules
+    outputs:
+      - changed_files
+      - diff_summary
+      - module_impact
+
+  # Step 2: Security review
+  - name: security_review
+    description: Check for security vulnerabilities
+    timeout: 3m
+    actions:
+      - scan_dependencies
+      - detect_secrets
+      - check_injection_risks
+      - validate_auth_patterns
+    outputs:
+      - security_issues
+      - severity_level
+    alerts:
+      - condition: severity_level >= high
+        channel: slack
+        message: "Security issue detected in PR"
+
+  # Step 3: Performance analysis
+  - name: performance_analysis
+    description: Analyze performance implications
+    timeout: 3m
+    actions:
+      - check_complexity
+      - identify_bottlenecks
+      - analyze_database_queries
+      - check_memory_usage
+    outputs:
+      - performance_score
+      - bottlenecks
+      - recommendations
+
+  # Step 4: Code quality check
+  - name: quality_check
+    description: Check code quality and best practices
+    timeout: 3m
+    actions:
+      - check_naming_conventions
+      - verify_error_handling
+      - check_test_coverage
+      - validate_documentation
+    outputs:
+      - quality_score
+      - violations
+      - suggestions
+
+  # Step 5: Generate suggestions
+  - name: generate_suggestions
+    description: Generate improvement suggestions
+    timeout: 5m
+    inputs:
+      - security_issues
+      - performance_score
+      - quality_score
+    actions:
+      - prioritize_issues
+      - generate_fixes
+      - create_examples
+    outputs:
+      - suggestions
+      - auto_fix_available
+
+  # Step 6: Post review
+  - name: post_review
+    description: Post review comments on PR
+    timeout: 2m
+    inputs:
+      - diff_summary
+      - security_issues
+      - performance_score
+      - quality_score
+      - suggestions
+    actions:
+      - format_review_comment
+      - post_to_github
+      - update_pr_status
+    outputs:
+      - review_posted
+      - status_updated
+
+  # Step 7: Auto-fix (optional)
+  - name: auto_fix
+    description: Apply automatic fixes if requested
+    condition: auto_fix_enabled && auto_fix_available
+    timeout: 5m
+    inputs:
+      - suggestions
+    actions:
+      - apply_fixes
+      - run_tests
+      - commit_changes
+    outputs:
+      - fixes_applied
+      - tests_passed
+
+metrics:
+  - name: review_duration
+    type: histogram
+    description: Time taken for review
+  - name: issues_found
+    type: counter
+    description: Number of issues identified
+  - name: auto_fixes_applied
+    type: counter
+    description: Number of automatic fixes applied
+
+notifications:
+  on_success:
+    - channel: github
+      message: "✅ Code review completed"
+  on_failure:
+    - channel: slack
+      message: "❌ Code review failed"
+  on_security_issue:
+    - channel: slack
+      severity: critical
+      message: "🚨 Security issue found in PR"

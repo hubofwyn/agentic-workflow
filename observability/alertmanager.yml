@@ -1,0 +1,66 @@
+# AlertManager Configuration
+
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'default'
+  routes:
+    # Critical alerts
+    - match:
+        severity: critical
+      receiver: 'critical'
+      continue: true
+
+    # High priority alerts
+    - match:
+        severity: high
+      receiver: 'high-priority'
+
+    # Warning alerts
+    - match:
+        severity: warning
+      receiver: 'warnings'
+
+receivers:
+  # Default receiver (console)
+  - name: 'default'
+    webhook_configs:
+      - url: 'http://host.docker.internal:3000/api/webhooks/alerts'
+        send_resolved: true
+
+  # Critical alerts (multiple channels)
+  - name: 'critical'
+    webhook_configs:
+      - url: 'http://host.docker.internal:3000/api/webhooks/alerts'
+        send_resolved: true
+    # Uncomment when configured
+    # slack_configs:
+    #   - api_url: '${SLACK_WEBHOOK_URL}'
+    #     channel: '#alerts-critical'
+    #     title: 'Critical Alert'
+    #     text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+
+  # High priority alerts
+  - name: 'high-priority'
+    webhook_configs:
+      - url: 'http://host.docker.internal:3000/api/webhooks/alerts'
+        send_resolved: true
+
+  # Warning alerts
+  - name: 'warnings'
+    webhook_configs:
+      - url: 'http://host.docker.internal:3000/api/webhooks/alerts'
+        send_resolved: false
+
+inhibit_rules:
+  # Inhibit warning if critical
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'cluster', 'service']
