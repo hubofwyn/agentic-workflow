@@ -1,0 +1,224 @@
+# OpenTelemetry Collector Configuration
+# Handles traces, metrics, and logs
+
+receivers:
+  # OTLP receiver for traces and metrics
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Prometheus receiver for scraping metrics
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'otel-collector'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['localhost:8888']
+
+        - job_name: 'application'
+          scrape_interval: 15s
+          static_configs:
+            - targets: ['host.docker.internal:8080']
+
+  # Host metrics receiver
+  hostmetrics:
+    collection_interval: 30s
+    scrapers:
+      cpu:
+      disk:
+      filesystem:
+      load:
+      memory:
+      network:
+      paging:
+      processes:
+
+  # File log receiver
+  filelog:
+    include: ["/var/log/*.log"]
+    start_at: beginning
+    operators:
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.timestamp
+          layout: '%Y-%m-%dT%H:%M:%S.%fZ'
+
+processors:
+  # Batch processor for better throughput
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+
+  # Memory limiter to prevent OOM
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  # Resource processor to add metadata
+  resource:
+    attributes:
+      - key: environment
+        value: development
+        action: upsert
+      - key: service.namespace
+        value: agentic-workflow
+        action: upsert
+      - key: deployment.environment
+        from_attribute: DEPLOYMENT_ENV
+        action: insert
+
+  # Attributes processor for data enrichment
+  attributes:
+    actions:
+      - key: http.user_agent
+        action: delete
+      - key: sensitive_data
+        action: hash
+
+  # Tail sampling for traces
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 10000
+    expected_new_traces_per_sec: 100
+    policies:
+      - name: errors-policy
+        type: status_code
+        status_code:
+          status_codes: [ERROR, UNSET]
+      - name: latency-policy
+        type: latency
+        latency:
+          threshold_ms: 1000
+      - name: probabilistic-policy
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 10
+
+  # Transform processor for metrics
+  transform:
+    metric_statements:
+      - context: metric
+        statements:
+          - set(unit, "ms") where name == "latency"
+          - set(unit, "bytes") where name == "memory_usage"
+
+  # Filter processor
+  filter:
+    metrics:
+      exclude:
+        match_type: regexp
+        metric_names:
+          - ".*_temp$"
+    spans:
+      exclude:
+        match_type: strict
+        attributes:
+          - key: http.target
+            value: /health
+
+exporters:
+  # Prometheus exporter for metrics
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    const_labels:
+      environment: development
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Jaeger exporter for traces
+  jaeger:
+    endpoint: jaeger:14250
+    tls:
+      insecure: true
+
+  # Loki exporter for logs
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    labels:
+      attributes:
+        level: severity
+        service: service.name
+        instance: service.instance.id
+
+  # OTLP exporter for all signals
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Debug exporter for troubleshooting
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+  # File exporter for backup
+  file:
+    path: /var/log/otel/data.json
+    rotation:
+      enabled: true
+      max_size: 100
+      max_age: 7
+      max_backups: 3
+
+extensions:
+  # Health check extension
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: /health
+    check_collector_pipeline:
+      enabled: true
+      interval: 5s
+      exporter_failure_threshold: 5
+
+  # Performance profiler
+  pprof:
+    endpoint: localhost:1777
+
+  # ZPages for debugging
+  zpages:
+    endpoint: localhost:55679
+
+  # Memory ballast for stability
+  memory_ballast:
+    size_mib: 256
+
+service:
+  extensions: [health_check, pprof, zpages, memory_ballast]
+
+  pipelines:
+    # Traces pipeline
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource, tail_sampling]
+      exporters: [jaeger, debug]
+
+    # Metrics pipeline
+    metrics:
+      receivers: [otlp, prometheus, hostmetrics]
+      processors: [memory_limiter, batch, resource, transform, filter]
+      exporters: [prometheus]
+
+    # Logs pipeline
+    logs:
+      receivers: [otlp, filelog]
+      processors: [memory_limiter, batch, resource, attributes]
+      exporters: [loki, debug]
+
+  telemetry:
+    logs:
+      level: info
+      development: false
+      encoding: json
+      output_paths: ["stdout", "/var/log/otel/collector.log"]
+      error_output_paths: ["stderr", "/var/log/otel/collector-error.log"]
+
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888

@@ -1,0 +1,209 @@
+# Pre-commit hook configuration
+# Automated code quality checks before each commit
+
+default_language_version:
+  python: python3
+  node: system
+
+repos:
+  # General file fixes
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+      - id: check-toml
+      - id: check-xml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key
+      - id: detect-aws-credentials
+        args: [--allow-missing-credentials]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: no-commit-to-branch
+        args: [--branch, main, --branch, master]
+
+  # Security scanning
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package-lock.json
+
+  # Markdown
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.37.0
+    hooks:
+      - id: markdownlint
+        args: ['--fix']
+
+  # YAML
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.33.0
+    hooks:
+      - id: yamllint
+        args: [-c=.yamllint.yaml]
+
+  # JavaScript/TypeScript
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v8.55.0
+    hooks:
+      - id: eslint
+        files: \.(js|jsx|ts|tsx)$
+        types: [file]
+        additional_dependencies:
+          - eslint
+          - eslint-config-prettier
+          - eslint-plugin-react
+          - eslint-plugin-react-hooks
+          - '@typescript-eslint/eslint-plugin'
+          - '@typescript-eslint/parser'
+
+  # Prettier
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+        types_or: [javascript, jsx, ts, tsx, css, scss, json, yaml, markdown]
+
+  # Python
+  - repo: https://github.com/psf/black
+    rev: 23.12.0
+    hooks:
+      - id: black
+        language_version: python3
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 6.1.0
+    hooks:
+      - id: flake8
+        additional_dependencies: [flake8-docstrings, flake8-bugbear]
+        args: ['--max-line-length=100', '--ignore=E203,W503']
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.7.1
+    hooks:
+      - id: mypy
+        additional_dependencies: [types-all]
+
+  # Shell scripts
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+        args: [-x]
+
+  # Dockerfile
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: ['--ignore', 'DL3008', '--ignore', 'DL3009']
+
+  # Git commit messages
+  - repo: https://github.com/jorisroovers/gitlint
+    rev: v0.19.1
+    hooks:
+      - id: gitlint
+        args: [--msg-filename]
+
+  # License headers
+  - repo: https://github.com/Lucas-C/pre-commit-hooks
+    rev: v1.5.4
+    hooks:
+      - id: insert-license
+        files: \.(js|jsx|ts|tsx|py|sh)$
+        args:
+          - --license-filepath
+          - .license-header.txt
+          - --comment-style
+          - //
+        exclude: ^(node_modules/|dist/|build/)
+
+  # Custom hooks
+  - repo: local
+    hooks:
+      # Run tests for changed files
+      - id: test-changed
+        name: Test changed files
+        entry: bash -c 'npm run test:changed'
+        language: system
+        pass_filenames: false
+        stages: [commit]
+
+      # Check for console.log statements
+      - id: no-console-log
+        name: Check for console.log
+        entry: bash -c 'grep -r "console\\.log" --include="*.js" --include="*.ts" --include="*.jsx" --include="*.tsx" . && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+
+      # Validate package.json
+      - id: validate-package-json
+        name: Validate package.json
+        entry: bash -c 'node -e "require(\"./package.json\")"'
+        language: system
+        files: package.json
+
+      # Check for TODO comments
+      - id: check-todos
+        name: Check TODO comments
+        entry: bash -c 'grep -rn "TODO\\|FIXME\\|HACK" --include="*.js" --include="*.ts" --include="*.jsx" --include="*.tsx" . || exit 0'
+        language: system
+        pass_filenames: false
+        verbose: true
+
+      # Update documentation
+      - id: update-docs
+        name: Update documentation
+        entry: bash -c 'npm run docs:update'
+        language: system
+        pass_filenames: false
+        stages: [commit]
+
+      # AI code review
+      - id: ai-review
+        name: AI Code Review
+        entry: bash -c 'claude-code review --quick || true'
+        language: system
+        pass_filenames: false
+        stages: [push]
+
+      # Performance check
+      - id: performance-check
+        name: Performance check
+        entry: bash -c 'npm run performance:check'
+        language: system
+        pass_filenames: false
+        stages: [push]
+
+      # Security audit
+      - id: security-audit
+        name: Security audit
+        entry: bash -c 'npm audit --audit-level=moderate'
+        language: system
+        pass_filenames: false
+        stages: [push]
+
+ci:
+  autofix_prs: true
+  autoupdate_schedule: weekly
+  autoupdate_commit_msg: 'chore: update pre-commit hooks'
+  skip: [no-commit-to-branch]

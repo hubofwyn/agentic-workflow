@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Pre-commit hook for Agentic Workflow
+echo "🔍 Running pre-commit checks..."
+
+# Run pre-commit hooks
+if command -v pre-commit &> /dev/null; then
+    pre-commit run --all-files
+else
+    # Fallback to npm scripts if pre-commit is not installed
+    npm run lint || {
+        echo "❌ Linting failed. Please fix errors and try again."
+        exit 1
+    }
+
+    npm run format:check || {
+        echo "❌ Code is not properly formatted. Run 'npm run format' to fix."
+        exit 1
+    }
+
+    npm run type-check || {
+        echo "❌ TypeScript type checking failed."
+        exit 1
+    }
+fi
+
+echo "✅ Pre-commit checks passed!"

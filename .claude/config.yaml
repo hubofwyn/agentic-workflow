@@ -1,0 +1,188 @@
+# Claude Code CLI Configuration
+# Optimized for agentic development workflow
+
+version: 1.0
+model: claude-3-opus-20240229
+
+# Context configuration
+context:
+  max_tokens: 100000
+  temperature: 0.7
+  include_patterns:
+    - "**/*.{js,ts,jsx,tsx,py,go,rs,java,cpp,c,h}"
+    - "**/*.{md,yml,yaml,json,toml}"
+    - "**/Dockerfile"
+    - "**/Makefile"
+    - "**/.env.example"
+  exclude_patterns:
+    - "**/node_modules/**"
+    - "**/.git/**"
+    - "**/dist/**"
+    - "**/build/**"
+    - "**/coverage/**"
+    - "**/*.lock"
+    - "**/.DS_Store"
+
+# Agent behavior configuration
+behavior:
+  auto_fix: true
+  auto_test: true
+  auto_document: true
+  continuous_learning: true
+  error_recovery: true
+
+# Workflow triggers
+triggers:
+  file_change:
+    - lint
+    - format
+    - test_affected
+  commit:
+    - validate_message
+    - run_tests
+    - update_docs
+  pr_open:
+    - review_code
+    - suggest_improvements
+    - check_security
+
+# Custom commands
+commands:
+  review:
+    description: "Perform comprehensive code review"
+    script: ".claude/commands/review.sh"
+
+  optimize:
+    description: "Optimize code for performance"
+    script: ".claude/commands/optimize.sh"
+
+  document:
+    description: "Generate or update documentation"
+    script: ".claude/commands/document.sh"
+
+  refactor:
+    description: "Suggest and apply refactoring"
+    script: ".claude/commands/refactor.sh"
+
+  test:
+    description: "Generate and run tests"
+    script: ".claude/commands/test.sh"
+
+# Task definitions
+tasks:
+  feature_development:
+    description: "Develop a new feature from specification"
+    steps:
+      - analyze_requirements
+      - design_architecture
+      - implement_feature
+      - create_tests
+      - update_documentation
+      - create_pr
+
+  bug_fix:
+    description: "Fix a reported bug"
+    steps:
+      - reproduce_issue
+      - identify_root_cause
+      - implement_fix
+      - add_regression_test
+      - update_changelog
+
+  performance_optimization:
+    description: "Optimize system performance"
+    steps:
+      - profile_current_state
+      - identify_bottlenecks
+      - implement_optimizations
+      - benchmark_improvements
+      - document_changes
+
+# Integration settings
+integrations:
+  github:
+    auto_pr: true
+    auto_review: true
+    require_tests: true
+    require_docs: true
+
+  opentelemetry:
+    endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
+    enabled: true
+    trace_all: true
+
+  error_tracking:
+    provider: "sentry"
+    dsn: "${SENTRY_DSN}"
+    enabled: true
+
+# Quality gates
+quality:
+  code_coverage:
+    minimum: 80
+    target: 95
+
+  performance:
+    max_latency_ms: 100
+    max_memory_mb: 512
+
+  security:
+    scan_dependencies: true
+    scan_secrets: true
+    scan_vulnerabilities: true
+
+  documentation:
+    require_examples: true
+    require_api_docs: true
+    max_staleness_days: 30
+
+# Learning configuration
+learning:
+  feedback_collection: true
+  pattern_recognition: true
+  optimization_suggestions: true
+  error_pattern_detection: true
+
+# Development environment
+environment:
+  variables:
+    NODE_ENV: "development"
+    LOG_LEVEL: "debug"
+    ENABLE_PROFILING: "true"
+    ENABLE_TRACING: "true"
+
+  services:
+    - name: "database"
+      type: "postgresql"
+      auto_start: true
+
+    - name: "cache"
+      type: "redis"
+      auto_start: true
+
+    - name: "observability"
+      type: "opentelemetry-collector"
+      auto_start: true
+
+# Hooks
+hooks:
+  pre_commit:
+    - lint
+    - format
+    - test
+
+  post_commit:
+    - update_metrics
+    - sync_docs
+
+  pre_push:
+    - security_scan
+    - dependency_check
+    - performance_check
+
+# Experimental features
+experimental:
+  auto_architecture: true
+  predictive_debugging: true
+  intelligent_caching: true
+  adaptive_optimization: true

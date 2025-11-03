@@ -1,0 +1,37 @@
+# Snyk configuration file
+version: v1.0.0
+
+# Security patches
+patches:
+  # Example patch configuration
+  # 'npm:lodash:20180130':
+  #   - '*':
+  #       patched: '2024-01-01T00:00:00.000Z'
+
+# Ignore specific vulnerabilities
+ignore:
+  # Example ignore (use sparingly and document why)
+  # SNYK-JS-EXAMPLE-12345:
+  #   - '*':
+  #       reason: 'False positive - not applicable in our use case'
+  #       expires: '2025-01-01T00:00:00.000Z'
+
+# Language settings
+language-settings:
+  node:
+    enableLicensesScan: true
+    enableVulnerabilitiesScan: true
+
+  python:
+    enableLicensesScan: true
+    enableVulnerabilitiesScan: true
+
+# Custom rules
+custom-rules:
+  - id: check-sensitive-data
+    severity: high
+    title: Check for sensitive data exposure
+
+  - id: validate-dependencies
+    severity: medium
+    title: Validate dependency versions
