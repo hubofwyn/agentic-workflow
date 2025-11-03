@@ -2,7 +2,7 @@
 # Optimized for production with minimal attack surface
 
 # Stage 1: Dependencies
-FROM node:20-alpine AS dependencies
+FROM node:25-alpine AS dependencies
 WORKDIR /app
 
 # Install build dependencies
@@ -16,7 +16,7 @@ COPY .npmrc* ./
 RUN npm ci --only=production
 
 # Stage 2: Build
-FROM node:20-alpine AS build
+FROM node:25-alpine AS build
 WORKDIR /app
 
 # Install build dependencies
@@ -38,7 +38,7 @@ RUN npm run build
 RUN npm run test:unit
 
 # Stage 3: Production
-FROM node:20-alpine AS production
+FROM node:25-alpine AS production
 WORKDIR /app
 
 # Add non-root user
