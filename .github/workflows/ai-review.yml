@@ -78,7 +78,7 @@ jobs:
             --output suggestions.md
 
       - name: Post review comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');
@@ -103,7 +103,7 @@ jobs:
             --commit "Apply AI-suggested improvements"
 
       - name: Update PR status
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const analysisData = require('./analysis.json');
@@ -248,7 +248,7 @@ jobs:
             --output optimization-report.md
 
       - name: Comment on PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');
