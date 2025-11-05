@@ -59,7 +59,10 @@ export interface FileChange {
 }
 
 export class SwiftMonitorService {
-  private readonly projectPath = path.resolve(__dirname, '../../../../FilePilot');
+  // Root directory containing FilePilot.xcodeproj
+  private readonly projectRoot = path.resolve(__dirname, '../../../..');
+  // Swift source files directory
+  private readonly sourcePath = path.join(this.projectRoot, 'FilePilot');
   private buildProcess?: ChildProcess;
   private testProcess?: ChildProcess;
   private fileWatcher?: chokidar.FSWatcher;
@@ -67,7 +70,7 @@ export class SwiftMonitorService {
     status: 'idle',
     warnings: [],
     errors: [],
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
   private latestTestResults?: TestResults;
   private fileChanges: FileChange[] = [];
@@ -80,12 +83,12 @@ export class SwiftMonitorService {
    * Initialize file watcher for Swift files
    */
   private initializeFileWatcher(): void {
-    const watchPath = path.join(this.projectPath, '**/*.swift');
+    const watchPath = path.join(this.sourcePath, '**/*.swift');
 
     this.fileWatcher = chokidar.watch(watchPath, {
       ignored: /(^|[\/\\])\../, // ignore dotfiles
       persistent: true,
-      ignoreInitial: true
+      ignoreInitial: true,
     });
 
     this.fileWatcher
@@ -103,7 +106,7 @@ export class SwiftMonitorService {
     const change: FileChange = {
       path: filePath,
       type,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     this.fileChanges.push(change);
@@ -116,7 +119,7 @@ export class SwiftMonitorService {
     logger.debug('Swift file changed', change);
 
     metricsCollector.increment('swift.files.changes', {
-      type
+      type,
     });
 
     // Auto-trigger build on file changes (optional)
@@ -135,10 +138,7 @@ export class SwiftMonitorService {
   /**
    * Start a build
    */
-  async startBuild(options: {
-    configuration?: string;
-    clean?: boolean;
-  }): Promise<string> {
+  async startBuild(options: { configuration?: string; clean?: boolean }): Promise<string> {
     const buildId = `build_${Date.now()}`;
     const startTime = Date.now();
 
@@ -148,7 +148,7 @@ export class SwiftMonitorService {
       configuration: options.configuration || 'Debug',
       warnings: [],
       errors: [],
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     // Kill existing build if any
@@ -161,10 +161,12 @@ export class SwiftMonitorService {
     if (options.clean) {
       args.push('clean', 'build');
     }
+    args.push('-project', 'FilePilot.xcodeproj');
+    args.push('-scheme', 'FilePilot');
     args.push('-configuration', options.configuration || 'Debug');
 
     this.buildProcess = spawn('xcodebuild', args, {
-      cwd: this.projectPath
+      cwd: this.projectRoot,
     });
 
     let output = '';
@@ -187,18 +189,18 @@ export class SwiftMonitorService {
         ...this.buildStatus,
         status: code === 0 ? 'success' : 'failed',
         duration,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
 
       logger.info('Build completed', {
         buildId,
         status: this.buildStatus.status,
-        duration
+        duration,
       });
 
       metricsCollector.histogram('swift.build.duration', duration);
       metricsCollector.increment('swift.builds.completed', {
-        status: this.buildStatus.status
+        status: this.buildStatus.status,
       });
     });
 
@@ -232,13 +234,21 @@ export class SwiftMonitorService {
       this.testProcess.kill();
     }
 
-    this.testProcess = spawn('xcodebuild', [
-      'test',
-      '-scheme', 'FilePilot',
-      '-destination', 'platform=macOS'
-    ], {
-      cwd: this.projectPath
-    });
+    this.testProcess = spawn(
+      'xcodebuild',
+      [
+        'test',
+        '-scheme',
+        'FilePilot',
+        '-destination',
+        'platform=macOS',
+        '-enableCodeCoverage',
+        'YES',
+      ],
+      {
+        cwd: this.projectRoot,
+      }
+    );
 
     let output = '';
     let passed = 0;
@@ -250,25 +260,35 @@ export class SwiftMonitorService {
       const lines = data.toString().split('\n');
 
       for (const line of lines) {
+        // Look for summary line: "Executed X tests, with Y failures"
+        const summaryMatch = line.match(/Executed (\d+) tests?, with (\d+) failures?/);
+        if (summaryMatch) {
+          const total = parseInt(summaryMatch[1], 10);
+          const failures_count = parseInt(summaryMatch[2], 10);
+          passed = total - failures_count;
+          failed = failures_count;
+        }
+
+        // Also count individual test cases as backup
         if (line.includes('Test Case') && line.includes('passed')) {
-          passed++;
+          // Individual test passed
         } else if (line.includes('Test Case') && line.includes('failed')) {
-          failed++;
           // Parse failure details
           const match = line.match(/Test Case '(.+)' failed \((.+)\)/);
           if (match) {
             failures.push({
               test: match[1],
-              message: match[2]
+              message: match[2],
             });
           }
         }
       }
     });
 
-    this.testProcess.on('close', (code) => {
+    this.testProcess.on('close', async (code) => {
       const duration = Date.now() - startTime;
       const total = passed + failed;
+      const coverage = await this.extractCoverage(output);
 
       this.latestTestResults = {
         suite: target,
@@ -276,32 +296,58 @@ export class SwiftMonitorService {
         passed,
         failed,
         skipped: 0,
-        coverage: this.extractCoverage(output),
+        coverage,
         duration,
         failures,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
 
       logger.info('Tests completed', {
         testRunId,
         passed,
         failed,
-        duration
+        coverage,
+        duration,
       });
 
       metricsCollector.histogram('swift.tests.duration', duration);
       metricsCollector.gauge('swift.tests.pass_rate', (passed / total) * 100);
+      metricsCollector.gauge('swift.tests.coverage', coverage);
     });
 
     return testRunId;
   }
 
   /**
-   * Extract coverage from test output
+   * Extract coverage from test output and xcresult
    */
-  private extractCoverage(output: string): number {
-    const match = output.match(/Test Coverage: ([\d.]+)%/);
-    return match ? parseFloat(match[1]) : 0;
+  private async extractCoverage(output: string): Promise<number> {
+    // Try to find xcresult path in output
+    const xcresultMatch = output.match(/Test session results.*:\n\s+(.+\.xcresult)/);
+    if (xcresultMatch) {
+      const xcresultPath = xcresultMatch[1];
+      try {
+        // Use xccov to extract coverage percentage
+        const coverageOutput = await this.executeCommand('xcrun', [
+          'xccov',
+          'view',
+          '--report',
+          '--json',
+          xcresultPath,
+        ]);
+        const coverageData = JSON.parse(coverageOutput);
+        // Extract line coverage percentage from the app target
+        if (coverageData.targets && coverageData.targets.length > 0) {
+          const appTarget = coverageData.targets.find((t: any) => t.name === 'FilePilot.app');
+          if (appTarget) {
+            return appTarget.lineCoverage * 100;
+          }
+        }
+      } catch (error) {
+        logger.warn('Failed to extract coverage from xcresult', { error });
+      }
+    }
+    return 0;
   }
 
   /**
@@ -319,7 +365,7 @@ export class SwiftMonitorService {
         coverage: 0,
         duration: 0,
         failures: [],
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
 
@@ -351,9 +397,8 @@ export class SwiftMonitorService {
       complexities.push(complexity);
     }
 
-    const avgComplexity = complexities.length > 0
-      ? complexities.reduce((a, b) => a + b, 0) / complexities.length
-      : 0;
+    const avgComplexity =
+      complexities.length > 0 ? complexities.reduce((a, b) => a + b, 0) / complexities.length : 0;
 
     const maxComplexity = Math.max(...complexities, 0);
 
@@ -365,9 +410,9 @@ export class SwiftMonitorService {
       complexity: {
         average: avgComplexity,
         max: maxComplexity,
-        distribution: this.getComplexityDistribution(complexities)
+        distribution: this.getComplexityDistribution(complexities),
       },
-      coverage: this.latestTestResults?.coverage || 0
+      coverage: this.latestTestResults?.coverage || 0,
     };
   }
 
@@ -391,7 +436,7 @@ export class SwiftMonitorService {
       }
     }
 
-    await walk(this.projectPath);
+    await walk(this.sourcePath);
     return files;
   }
 
@@ -411,7 +456,7 @@ export class SwiftMonitorService {
       /\bcase\b/g,
       /\bcatch\b/g,
       /\?\?/g, // nil-coalescing
-      /\?/g    // optional chaining (simplified)
+      /\?/g, // optional chaining (simplified)
     ];
 
     for (const pattern of decisionPatterns) {
@@ -429,10 +474,10 @@ export class SwiftMonitorService {
    */
   private getComplexityDistribution(complexities: number[]): Record<string, number> {
     const distribution: Record<string, number> = {
-      low: 0,     // 1-5
-      medium: 0,  // 6-10
-      high: 0,    // 11-20
-      critical: 0 // 20+
+      low: 0, // 1-5
+      medium: 0, // 6-10
+      high: 0, // 11-20
+      critical: 0, // 20+
     };
 
     for (const complexity of complexities) {
@@ -454,12 +499,12 @@ export class SwiftMonitorService {
    * Analyze a specific file
    */
   async analyzeFile(filePath: string): Promise<any> {
-    const fullPath = path.resolve(this.projectPath, filePath);
+    const fullPath = path.resolve(this.sourcePath, filePath);
     const content = await fs.readFile(fullPath, 'utf-8');
 
     const lines = content.split('\n');
-    const classes = (content.match(/\b(class|struct|enum)\s+\w+/g) || []);
-    const functions = (content.match(/\bfunc\s+\w+/g) || []);
+    const classes = content.match(/\b(class|struct|enum)\s+\w+/g) || [];
+    const functions = content.match(/\bfunc\s+\w+/g) || [];
     const complexity = this.calculateComplexity(content);
 
     return {
@@ -470,7 +515,7 @@ export class SwiftMonitorService {
       complexity,
       hasTests: filePath.includes('Tests'),
       imports: this.extractImports(content),
-      todos: this.extractTodos(content)
+      todos: this.extractTodos(content),
     };
   }
 
@@ -479,7 +524,7 @@ export class SwiftMonitorService {
    */
   private extractImports(content: string): string[] {
     const imports = content.match(/^import\s+(\w+)/gm) || [];
-    return imports.map(imp => imp.replace('import ', ''));
+    return imports.map((imp) => imp.replace('import ', ''));
   }
 
   /**
@@ -506,7 +551,7 @@ export class SwiftMonitorService {
     return [
       `Build status: ${this.buildStatus.status}`,
       ...this.buildStatus.warnings.slice(-options.lines / 2),
-      ...this.buildStatus.errors.slice(-options.lines / 2)
+      ...this.buildStatus.errors.slice(-options.lines / 2),
     ];
   }
 
@@ -534,7 +579,8 @@ export class SwiftMonitorService {
 
     // Check project exists
     try {
-      await fs.access(this.projectPath);
+      await fs.access(this.projectRoot);
+      await fs.access(this.sourcePath);
       checks.project = true;
     } catch {
       checks.project = false;
